@@ -26,9 +26,9 @@ def main():
         p_ind += 1;
     portChoice = int(input("Enter the index of the port you want to use, or -1 to exit.\nChoice: "));
 
-    if portChoice == -1:
+    if (portChoice == -1):
         print("Exiting...");
-    elif portChoice not in range(len(portList)):
+    elif (portChoice not in range(len(portList))):
         print("Invalid index. Exiting...");
     else:
         # This second part will show the user if the board resets upon closing the serial connection.

@@ -19,11 +19,13 @@ The libraries this script uses are listed below, as well as the download instruc
     * This library is not built-in, so you need to open a terminal window and enter `pip3 install xlsxwriter` if you do not have the library.
 3. matplotlib
     * This library is not built-in, so you need to open a terminal window and enter `pip3 install matplotlib` if you do not have the library.
-4. datetime
+4. os
     * This library is built-in, so you should not need to install anything.
-5. time
+5. datetime
     * This library is built-in, so you should not need to install anything.
-6. traceback
+6. time
+    * This library is built-in, so you should not need to install anything.
+7. traceback
     * This library is built-in, so you should not need to install anything
 
 ### Warning

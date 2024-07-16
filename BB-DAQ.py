@@ -15,6 +15,8 @@ from serial.tools import list_ports
 import xlsxwriter
 # If matplotlib is not installed, type "pip3 install matplotlib" into a Terminal window
 from matplotlib import pyplot as plt
+# Python has a built-in os library
+import os
 # Python has a built-in datetime library
 from datetime import datetime
 # Python has a built-in time library
@@ -23,26 +25,21 @@ import time
 import traceback
 
 
-# This function returns a boolean based on if a given file already exists
-def fileAlreadyExists(filepath):
-    exists = True;
-    try:
-        with open(filepath, "rt") as f:
-            pass;
-    except:
-        exists = False;
-    return exists;
-
-
 # This function prompts the user to either overwrite the specified file or enter another file name
 # It will return the final file name (as a string)
 def resolveDupFile(filepath, ext):
     fileOverwrite = False;
-    while fileAlreadyExists(filepath) and not fileOverwrite:
+    while (os.path.exists(filepath)) and (not fileOverwrite):
         print("This file already exists:", filepath);
         fileOverwrite = input("Do you wish to overwrite it? ('y'/'n'): ").upper() == "Y";
         if not fileOverwrite:
-            filepath = input("Enter another workbook/file name or path (without the '" + ext + "' at the end): ") + ext;
+            filepath = os.path.normpath(input("Enter another workbook/file name or path (without the '" + ext + "' at the end): ") + ext);
+    # Make sure the directory exists
+    fileDir = os.path.split(filepath)[0];
+    if (fileDir != ""):
+        # Using the following os methods on "" would throw errors
+        if (not os.path.exists(fileDir)):
+            os.makedirs(fileDir);
     return filepath;
 
 
@@ -62,9 +59,9 @@ def main():
         p_ind += 1;
     portChoice = int(input("Enter the index of the port you want to use, or -1 to exit.\nChoice: "));
 
-    if portChoice == -1:
+    if (portChoice == -1):
         print("Exiting...");
-    elif portChoice not in range(len(portList)):
+    elif (portChoice not in range(len(portList))):
         print("Invalid index. Exiting...");
     else:
         # This second part will actually read the serial data from the Arduino and write it to a file.
@@ -90,13 +87,13 @@ def main():
         print("\nMeasuring delay between Arduino data packets...");
         while runHeaderLoop:
             dataIn = (ser.readline()).decode().rstrip('\r\n');
-            if not dataStarted:
-                if dataIn.upper() == dataStartAfter:
+            if (not dataStarted):
+                if (dataIn.upper() == dataStartAfter):
                     dataStarted = True;
-            elif not readHeader:
+            elif (not readHeader):
                 headerTxt = dataIn; # Save the header
                 readHeader = True;
-            elif not time0Found:
+            elif (not time0Found):
                 t0 = time.time();
                 time0Found = True;
             else:
@@ -107,13 +104,13 @@ def main():
 
         delayArd = round(t1 - t0, 3);
         graphPause = 0.5*delayArd; # Account for data processing time
-        if delayArd == 0:
+        if (delayArd == 0):
             # This is unlikely to happen, but I must account for it
             print("No notable Arduino delay between messages. There should be some sort of delay on the order of at least milliseconds.");
             print("If you want to see the live graph, there must be some pause for it to update.");
             print("If a delay is introduced, the graph and data-writing will lag behind, but there will be no gaps in the data stream.");
             addDelay = input("Add a 1 ms delay? ('y'/'n'): ").upper() == "Y";
-            if addDelay:
+            if (addDelay):
                 delayArd = 0.001;
                 graphPause = 0.001;
         else:
@@ -131,10 +128,9 @@ def main():
         timeColInd = int(input("Enter the column index (start at 0) for the x-axis in the transmitted data: "));
         dataColInd = int(input("Enter the column index (start at 0) for the y-axis in the transmitted data: "));
         saveChoice = int(input("Enter 0 to save as an Excel workbook, or 1 to save as a CSV file.\nChoice: "));
-        fileName = input("Enter workbook/file name or path (without the file-specific extension): ");
-        fileOverwrite = False;
+        fileName = os.path.normpath(input("Enter workbook/file name or path (without the file-specific extension): "));
 
-        if saveChoice == 0:
+        if (saveChoice == 0):
             ext = ".xlsx";
             fileName += ext;
             fileName = resolveDupFile(fileName, ext);
@@ -171,7 +167,7 @@ def main():
             print("  Press Ctrl+C (use as last resort).\n");
             while True:
                 dataIn = (ser.readline()).decode().rstrip('\r\n');
-                if not(dataStarted):
+                if (not dataStarted):
                     if dataIn.upper() == dataStartAfter:
                         dataStarted = True;
                 else:
@@ -183,34 +179,34 @@ def main():
                         raise KeyboardInterrupt;
                     for col in range(len(row)):
                         cellData = row[col];
-                        if saveChoice == 0:
+                        if (saveChoice == 0):
                             try:
                                 cellData = float(cellData);
-                                if col == dataColInd:
+                                if (col == dataColInd):
                                     currData = cellData;
-                                if col == timeColInd:
+                                if (col == timeColInd):
                                     currTime = cellData;
                                 sheet.write(rowNum, col, cellData);
                             except:
-                                if cellData.upper() == "TIME":
+                                if (cellData.upper() == "TIME"):
                                     cellData = datetime.now().time();
                                     sheet.write(rowNum, col, cellData, format_time);
                                 else:
                                     sheet.write(rowNum, col, cellData);
                         else:
                             try:
-                                if col == dataColInd:
+                                if (col == dataColInd):
                                     currData = float(cellData);
-                                if col == timeColInd:
+                                if (col == timeColInd):
                                     currTime = float(cellData);
                             except:
                                 pass;
-                            if cellData.upper() == "TIME":
+                            if (cellData.upper() == "TIME"):
                                 cellData = str(datetime.now().time());
                             with open(fileName, "at") as f:
                                 f.write(cellData);
                                 f.write(",");
-                    if saveChoice == 0:
+                    if (saveChoice == 0):
                         rowNum += 1;
                     else:
                         with open(fileName, "at") as f:
@@ -228,7 +224,7 @@ def main():
                         # Reset the index
                         bufInd = 1;
                         # This will wait for your keypress
-                        if plt.waitforbuttonpress(graphPause):
+                        if (plt.waitforbuttonpress(graphPause)):
                             raise KeyboardInterrupt;
         except KeyboardInterrupt:
             print("\nExiting...");
@@ -239,7 +235,7 @@ def main():
             ser.close();
             plt.close();
             
-        if saveChoice == 0:
+        if (saveChoice == 0):
             # Create a new chart object before closing the workbook
             capitalA_Int = ord("A");
             timeCol = chr(capitalA_Int + timeColInd);
