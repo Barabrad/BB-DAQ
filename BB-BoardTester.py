@@ -13,7 +13,18 @@ import serial
 from serial.tools import list_ports
 
 
-# This main() function could be broken up more, but given that this is not an assignment, I can relax the standards a bit.
+# This function opens the serial connection, gets a batch of data, then closes the connection
+def getSerialBatch(ser, numLines):
+    print("\nSerial Connection Opening...\n");
+    ser.open();
+    for _ in range(numLines):
+        dataIn = (ser.readline()).decode().rstrip('\r\n');
+        print(dataIn);
+    ser.close();
+    print("\nSerial Connection Closed...\n");
+
+
+# main()
 def main():
     # This first part will find the available serial ports. The Arduino should be a USB port.
     # To be sure of the Arduino's port, run this part before and after plugging in the Arduino, and compare the
@@ -42,23 +53,8 @@ def main():
         ser = serial.Serial(port, buad);
         ser.close();
 
-        # Print the first batch of lines before closing the connection
-        print("\nSerial Connection Opening...\n");
-        ser.open();
-        for i in range(numLines):
-            dataIn = (ser.readline()).decode().rstrip('\r\n');
-            print(dataIn);
-        ser.close();
-        print("\nSerial Connection Closed...\n");
-
-        # Print the second batch of lines before closing the connection
-        print("\nSerial Connection Opening...\n");
-        ser.open();
-        for i in range(numLines):
-            dataIn = (ser.readline()).decode().rstrip('\r\n');
-            print(dataIn);
-        ser.close();
-        print("\nSerial Connection Closed...\n");
+        # Print two batches of serial data
+        for _ in range(2): getSerialBatch(ser, numLines);
 
         print("Done.");
 
