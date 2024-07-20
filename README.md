@@ -6,9 +6,9 @@ This script is a workaround for PLX-DAQ meant for Mac, but it also works on Wind
 ## Documentation
 
 ### Introduction
-This script is meant to be a Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). However, it has worked on Windows, so it is not exclusive to Mac. **This script does not interface with PLX-DAQ, so there is no need to download the latter.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
+This script is meant to be a Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). However, it has worked on Windows, so it is not exclusive to Mac. **This script does not interface with PLX-DAQ, so there is no need to download PLX-DAQ.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
 
-I found out in Spring 2024 that different boards behave differently when the serial connection is closed. The Arduino Uno R3 (the board used in 2023) effectively resets, which my code takes for granted, but the Arduino Uno R4 Minima (the board used in 2024) does not. This difference will cause BB-DAQ to get stuck waiting for the "CLEARDATA" that marks the beginning of the serial stream when the Uno R4 Minima is used. I found a quick way to fix this on the user end, and I made a script (BB-BoardTester.py) to determine if any boards used in the future are similar to the Uno R3 or the Uno R4 Minima (theoretically, the board being tested might not even be an Arduino). In the tutorial below, "[**If R4** ...]" will contain instructions necessary for boards in the latter category. See **Appendix A** for the BB-BoardTester tutorial.
+I found out in Spring 2024 that different boards behave differently when the serial connection is closed. The Arduino Uno R3 (the board used in 2023) effectively resets, which my code takes for granted, but the Arduino Uno R4 Minima (the board used in 2024) does not. This difference will cause BB-DAQ to get stuck waiting for the "CLEARDATA" that marks the beginning of the serial stream when the Uno R4 Minima is used. I found a quick way to fix this on the user end, and I made a script (BB-BoardTester.py) to determine if any boards used in the future are similar to the Uno R3 or the Uno R4 Minima (theoretically, the board being tested might not even be an Arduino). In the tutorial below, "[**If R4** ...]" will contain instructions necessary for boards in the latter category. See [**Appendix A**](README.md#appendix-a-bb-boardtester-tutorial) for the BB-BoardTester tutorial.
 
 ### Libraries
 The libraries this script uses are listed below, as well as the download instructions. **My assumption is that you already have Python 3 installed on your computer.** To check, open a terminal window and type `python3 -V`. If the output does not display a version number, try `python -V`. If the latter command works, use `python` and `pip` instead of `python3` and `pip3`, respectively. If neither command shows a version number, install Python 3 first, and then return here. To see which non-built-in libraries are already installed, open a terminal window and type `pip3 list`.
@@ -30,9 +30,10 @@ The libraries this script uses are listed below, as well as the download instruc
 
 ### Warning
 Also, I am using a Mac, so the path slashes in the tutorial are different from those for Windows: "/" versus "\\" (the script accounts for this difference, but the tutorial does not).
+    * Note that Python's `os.path.normpath()` will correct "/" to "\\" on Windows, but will not correct "\\" to "/" on Mac.
 
 ### Tutorial
-If all of the libraries are installed, and the thermocouple code from E13.5 is on your Arduino (see **Appendix B**), you are ready for the tutorial.
+If all of the libraries are installed, and the thermocouple code from E13.5 is on your Arduino (see [**Appendix B**](README.md#appendix-b-arduino-code)), you are ready for the tutorial.
 1. Before plugging in the Arduino to your computer, run BB-DAQ. **You can do this either from your IDE or a terminal window.** For this tutorial, I will use the terminal window (I used the `cd` command to get to the directory with the code).
 ```
 brad@Brads-MBP ~ % cd "/Users/brad/Desktop/Courses/AME 341b/HW/Assignment Submissions/E13p5/Mac Workaround"
@@ -43,8 +44,7 @@ Enter the index of the port you want to use, or -1 to exit.
 Choice: 
 ```
 
-2. At this point, take note of the ports available before plugging the Arduino in. After doing so, enter `-1` to exit, and then plug your Arduino into your computer. [**If R4**, press the
-Reset button on the Arduino.] Run the script again, and choose the new port (assuming you did not add or remove any other serial ports). Beyond this step, the process is the same whether you use an IDE or terminal window.
+2. At this point, take note of the ports available before plugging the Arduino in. After doing so, enter `-1` to exit, and then plug your Arduino into your computer. [**If R4**, press the Reset button on the Arduino.] Run the script again, and choose the new port (assuming you did not add or remove any other serial ports). Beyond this step, the process is the same whether you use an IDE or terminal window.
 ```
 Choice: -1
 Exiting...
@@ -176,8 +176,8 @@ int i = 1; // Define serial number increment variable
 // Assign Null as no value reading for thermocouple
 Thermocouple* thermocouple = NULL;
 
-// The setup function runs once when you press reset or power the board void
-setup() {
+// The setup function runs once when you press reset or power the board
+void setup() {
   Serial.begin(9600); // Baud rate.
   Serial.println("CLEARDATA"); // Clear data each cycle in PLX-DAQ
   // Assign labels for excel columns in PLX-DAQ
