@@ -1,12 +1,10 @@
 # BB-DAQ
-This script is a workaround for PLX-DAQ meant for Mac, but it also works on Windows.
-
-(Updated in Spring 2024)
+This script is a (limited) workaround for PLX-DAQ meant for Mac, but it also works on Windows.
 
 ## Documentation
 
 ### Introduction
-This script is meant to be a Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). However, it has worked on Windows, so it is not exclusive to Mac. **This script does not interface with PLX-DAQ, so there is no need to download PLX-DAQ.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
+This script is meant to be a (limited) Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). (See [**Warning**](README.md#warning) for specifics on the limitations of BB-DAQ.) However, this script has worked on Windows, so it is not exclusive to Mac. **BB-DAQ does not interface with PLX-DAQ, so there is no need to download the latter.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
 
 I found out in Spring 2024 that different boards behave differently when the serial connection is closed. The Arduino Uno R3 (the board used in 2023) effectively resets, which my code takes for granted, but the Arduino Uno R4 Minima (the board used in 2024) does not. This difference will cause BB-DAQ to get stuck waiting for the "CLEARDATA" that marks the beginning of the serial stream when the Uno R4 Minima is used. I found a quick way to fix this on the user end, and I made a script (BB-BoardTester.py) to determine if any boards used in the future are similar to the Uno R3 or the Uno R4 Minima (theoretically, the board being tested might not even be an Arduino). In the tutorial below, "[**If R4** ...]" will contain instructions necessary for boards in the latter category. See [**Appendix A**](README.md#appendix-a-bb-boardtester-tutorial) for the BB-BoardTester tutorial.
 
@@ -29,6 +27,8 @@ The libraries this script uses are listed below, as well as the download instruc
     * This library is built-in, so you should not need to install anything
 
 ### Warning
+This script does not replicate all of the features of PLX-DAQ! This script was originally made to read data serially from an Arduino (see [**Appendix B**](README.md#appendix-b-arduino-code) for the specific Arduino file), plot the data, and write to Excel. Replications for commands like "RESETTIMER" and "CLEARDATA" were added over a year later as an afterthought.
+
 Also, I am using a Mac, so the path slashes in the tutorial are different from those for Windows: "/" versus "\\" (the script accounts for this difference, but the tutorial does not).
     * Note that Python's `os.path.normpath()` will correct "/" to "\\" on Windows, but will not correct "\\" to "/" on Mac.
 
@@ -74,8 +74,7 @@ Enter the column index (start at 0) for the x-axis in the transmitted data:
 ```
 Enter the column index (start at 0) for the x-axis in the transmitted data: 3
 Enter the column index (start at 0) for the y-axis in the transmitted data: 4
-Enter 0 to save as an Excel workbook, or 1 to save as a CSV file.
-Choice: 0
+Enter 0 to save as an Excel workbook, or enter 1 to save as a CSV file: 0
 Enter workbook/file name or path (without the file-specific extension): 
 ```
 
