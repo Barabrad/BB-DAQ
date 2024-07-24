@@ -134,16 +134,26 @@ def fillTwoBufsWithNone(bufSize):
     return [buf1, buf2];
 
 
+# This function adds a sheet to the workbook and formats it
+def addAndFormatSheet(workbook, sheetName):
+    sheet = workbook.add_worksheet(sheetName);
+    # Make columns 1 and 3 (0-indexed) wider; this formatting is for BB-DAQ's original purpose, so feel free to change it
+    sheet.set_column(1, 1, 15); sheet.set_column(3, 3, 15);
+    return sheet;
+
+
 # This function does the reading of serial data and writing of the output file
 def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, DATA_START_AFTER, TIMER_RESET, graphPause):
+    # Find how many columns the header has
+    header = headerTxt.split(DATA_DELIM);
+    numHeaderCols = len(header);
+
+    # Prepare the output files (and related variables)
     if (saveChoice == 0):
         sheetName = "Data";
-        workbook = xlsxwriter.Workbook(fileName);
-        sheet = workbook.add_worksheet(sheetName);
+        workbook = xlsxwriter.Workbook(fileName, {'default_date_format': 'hh:mm:ss.000', 'constant_memory': True});
+        sheet = addAndFormatSheet(workbook, sheetName);
         rowNum = 0;
-        format_time = workbook.add_format({'num_format': 'hh:mm:ss.000'});
-        sheet.set_column(1, 1, 15);
-        sheet.set_column(3, 3, 15);
     else:
         writeToTextFile(fileName, "", False);
 
@@ -153,12 +163,9 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
     [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
     bufInd = 0; # Start the index count (afterwards, reserve 0 for the last plotted value)
 
-    header = headerTxt.split(DATA_DELIM);
-    numHeaderCols = len(header);
+    fig, ax = plt.subplots(1,1); plt.ion();
     xLabel = header[timeColInd];
     yLabel = header[dataColInd];
-
-    fig, ax = plt.subplots(1,1); plt.ion();
     ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
 
     dataStarted = False;
@@ -172,6 +179,7 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
         while True:
             # The rows are iterated by the while loop, but columns will be iterated by the for loop
             currTime = currData = None; # Reset the time and data values
+            # Read in a line of data and parse it
             dataIn = (ser.readline()).decode().strip();
             if (not dataStarted):
                 dataStarted = (dataIn.upper() == DATA_START_AFTER);
@@ -187,9 +195,11 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
                 for col in range(numCols):
                     if (not bypassRow):
                         cellData = row[col];
-                        isTime = False; # Used in later if-else statements since cellData will be overwritten
+                        isTime = isTimer = False; # Used in later if-else statements since cellData will be overwritten
                         # Swap out key words with the values
-                        if (cellData.upper() == "TIMER"): cellData = round(time.time() - timerT0, 3);
+                        if (cellData.upper() == "TIMER"):
+                            isTimer = True;
+                            cellData = round(time.time() - timerT0, 3);
                         elif (cellData.upper() == "TIME"):
                             isTime = True;
                             cellData = datetime.now().time();
@@ -207,7 +217,7 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
                                 except:
                                     pass;
                                 finally:
-                                    if (isTime): sheet.write(rowNum, col, cellData, format_time);
+                                    if (isTime): sheet.write_datetime(rowNum, col, cellData);
                                     else: sheet.write(rowNum, col, cellData);
                             else:
                                 try:
@@ -218,18 +228,22 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
                                 except:
                                     pass;
                                 finally:
-                                    if (isTime): cellData = str(cellData);
-                                    writeToTextFile(fileName, f"{cellData},");
+                                    # The row array is unused after the column iteration, so it can be reused for holding CSV values
+                                    if (isTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
                         elif (rowType == TIMER_RESET):
                             timerT0 = time.time();
                             bypassRow = True; # Move on to the next row
                         elif (rowType == DATA_START_AFTER):
                             if (saveChoice == 0):
                                 # Overwrite all rows after header then reset rowNum
-                                blankCol = [None]*(rowNum-2); # Current row is empty, and ignore header row
-                                for col_i in range(numHeaderCols):
-                                    sheet.write_column(1, col_i, blankCol, workbook.add_format());
-                                rowNum = 1; # The row incrementer will be bypassed, so start at 1
+                                #row = [None]*numHeaderCols; # It's okay to overwrite row since it won't be used until the next line of data
+                                #for row_i in range(1, rowNum-1): # Current row is empty, and ignore header row
+                                #    sheet.write_row(row_i, 0, row, workbook.add_format());
+                                # If the below stops working, uncomment the above and set constant_memory to False in the Workbook constructor
+                                # The below is inspired by https://github.com/jmcnamara/XlsxWriter/pull/432/commits/613f2ca7a60018337222f6a07d602e3f28595a36
+                                workbook.worksheets().remove(sheet);
+                                sheet = addAndFormatSheet(workbook, sheetName);
+                                rowNum = 0; # The row incrementer will be bypassed
                             else:
                                 writeToTextFile(fileName, f"{headerTxt}\n", False);
                             # Reset graph
@@ -238,14 +252,14 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
                             [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
                             bufInd = 0; # Restart the index count (afterwards, reserve 0 for the last plotted value)
                             bypassRow = True; # Move on to the next row
-                        else:
+                        else: # Some other row type, like "LABEL"
                             if (saveChoice == 0): sheet.write(rowNum, col, cellData);
-                            else: writeToTextFile(fileName, f"{cellData},");
+                            # No need for an else; the row array already has the string value
                 # Check to see if the row has been bypassed before writing and plotting data
                 if (not bypassRow):
                     # Increment row/line if the current row is not bypassed
                     if (saveChoice == 0): rowNum += 1;
-                    else: writeToTextFile(fileName, "\n");
+                    else: writeToTextFile(fileName, f"{','.join(row)}\n");
                     # Add data to buffer and/or plot it
                     if (rowIsData):
                         bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;

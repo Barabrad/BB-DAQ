@@ -13,6 +13,23 @@ import serial
 from serial.tools import list_ports
 
 
+# This function gets a valid integer input from the user
+def getValidIntInput(prompt, lBnd=None, hBnd=None):
+    valid = False;
+    while (not valid):
+        x = input(prompt).strip();
+        try:
+            x = int(x);
+            if (x == round(x, 0)):
+                if (lBnd == None): lBnd = x - 1;
+                if (hBnd == None): hBnd = x + 1;
+                valid = (lBnd <= x) and (x <= hBnd);
+                if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
+        except:
+            print("Error: Numeric input not an integer");
+    return x;
+
+
 # This function opens the serial connection, gets a batch of data, then closes the connection
 def getSerialBatch(ser, numLines):
     print("\nSerial Connection Opening...\n");
@@ -35,19 +52,18 @@ def main():
     for p in portList:
         print(str(p_ind) + ": " + p.device);
         p_ind += 1;
-    portChoice = int(input("Enter the index of the port you want to use, or -1 to exit.\nChoice: "));
+    portPrompt = "Enter the index of the port you want to use, or -1 to exit.\nChoice: ";
+    portChoice = getValidIntInput(portPrompt, -1, len(portList)-1);
 
     if (portChoice == -1):
         print("Exiting...");
-    elif (portChoice not in range(len(portList))):
-        print("Invalid index. Exiting...");
     else:
         # This second part will show the user if the board resets upon closing the serial connection.
         numLines = 10; # Arbitrary, but it must be enough to show whether or not the board reset
 
         # Get port info from user
         port = portList[portChoice].device;
-        buad = int(input("Enter the buad rate: "));
+        buad = getValidIntInput("Enter the buad rate: ", 1);
         # See the rest of serial.Serial()'s parameters here:
         # https://pyserial.readthedocs.io/en/latest/pyserial_api.html#serial.Serial.__init__
         ser = serial.Serial(port, buad);
