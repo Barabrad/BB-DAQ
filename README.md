@@ -4,9 +4,9 @@ This script is a (limited) workaround for PLX-DAQ meant for Mac, but it also wor
 ## Documentation
 
 ### Introduction
-This script is meant to be a (limited) Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). (See [**Warning**](README.md#warning) for specifics on the limitations of BB-DAQ.) However, this script has worked on Windows, so it is not exclusive to Mac. **BB-DAQ does not interface with PLX-DAQ, so there is no need to download the latter.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
+This script is meant to be a (limited) Mac workaround for PLX-DAQ, an Excel file with a macro that uses COM ports (Macs do not have these). (See [**Warning**](#warning) for specifics on the limitations of BB-DAQ.) However, this script has worked on Windows, so it is not exclusive to Mac. **BB-DAQ does not interface with PLX-DAQ, so there is no need to download the latter.** Although there are comments in the code, I figured a document with a tutorial and warnings would be better. In this document, "terminal window" (for Mac) will mean "command prompt" for Windows.
 
-I found out in Spring 2024 that different boards behave differently when the serial connection is closed. The Arduino Uno R3 (the board used in 2023) effectively resets, which my code takes for granted, but the Arduino Uno R4 Minima (the board used in 2024) does not. This difference will cause BB-DAQ to get stuck waiting for the "CLEARDATA" that marks the beginning of the serial stream when the Uno R4 Minima is used. I found a quick way to fix this on the user end, and I made a script (BB-BoardTester.py) to determine if any boards used in the future are similar to the Uno R3 or the Uno R4 Minima (theoretically, the board being tested might not even be an Arduino). In the tutorial below, "[**If R4** ...]" will contain instructions necessary for boards in the latter category. See [**Appendix A**](README.md#appendix-a-bb-boardtester-tutorial) for the BB-BoardTester tutorial.
+I found out in Spring 2024 that different boards behave differently when the serial connection is closed. The Arduino Uno R3 (the board used in 2023) effectively resets, which my code takes for granted, but the Arduino Uno R4 Minima (the board used in 2024) does not. This difference will cause BB-DAQ to get stuck waiting for the "CLEARDATA" that marks the beginning of the serial stream when the Uno R4 Minima is used. I found a quick way to fix this on the user end, and I made a script ([BB-BoardTester.py](https://github.com/Barabrad/BB-DAQ/blob/main/BB-BoardTester.py)) to determine if any boards used in the future are similar to the Uno R3 or the Uno R4 Minima (theoretically, the board being tested might not even be an Arduino). In the tutorial below, "[**If R4** ...]" will contain instructions necessary for boards in the latter category. See [**Appendix A**](#appendix-a-bb-boardtester-tutorial) for the BB-BoardTester tutorial.
 
 ### Libraries
 The libraries this script uses are listed below, as well as the download instructions. **My assumption is that you already have Python 3 installed on your computer.** To check, open a terminal window and type `python3 -V`. If the output does not display a version number, try `python -V`. If the latter command works, use `python` and `pip` instead of `python3` and `pip3`, respectively. If neither command shows a version number, install Python 3 first, and then return here. To see which non-built-in libraries are already installed, open a terminal window and type `pip3 list`.
@@ -27,13 +27,37 @@ The libraries this script uses are listed below, as well as the download instruc
     * This library is built-in, so you should not need to install anything
 
 ### Warning
-This script does not replicate all of the features of PLX-DAQ! This script was originally made to read data serially from an Arduino (see [**Appendix B**](README.md#appendix-b-arduino-code) for the specific Arduino file), plot the data, and write to Excel. Replications for commands like "RESETTIMER" and "CLEARDATA" were added over a year later as an afterthought.
+This script does not replicate all of the features of PLX-DAQ! This script was originally made to read data serially from an Arduino (see [**Appendix B**](#appendix-b-arduino-code) for the specific Arduino file), plot the data, and write to Excel. Replications for commands like "RESETTIMER" and "CLEARDATA" were added over a year later as an afterthought. See [**Current Key Words**](#current-key-words) for the current list of PLX-DAQ directives and special data strings this code can replicate.
 
 Also, I am using a Mac, so the path slashes in the tutorial are different from those for Windows: "/" versus "\\" (the script accounts for this difference, but the tutorial does not).
     * Note that Python's `os.path.normpath()` will correct "/" to "\\" on Windows, but will not correct "\\" to "/" on Mac.
 
+### Current Key Words
+Each line of data received serially will be split at each comma to form a list (or a row), and the **first value** will determine the row type. **If no row type is provided, or the type is not supported, the DATA type will be assumed and added to the beginning of the row.** The table below shows the current row types and behaviors:
+
+Row Type | Properties
+--- | ---
+DATA | Each value in the row will be checked for any of the key words in the "Key Words" table
+LABEL | The row will be written to the output file as-is
+MSG | The row will not be written to the output file, but it will still be printed in the command line where the script was run
+
+If any of the below words is the **first value** of a row, it is a directive that will perform the action specified below:
+
+Directive | Action
+--- | ---
+CLEARDATA | Signals the start of data collection (if at the beginning) or erases the sheet except for the header row (if at any time after the beginning)
+RESETTIMER | Sets the reference time of the timer to the current time (see "TIMER" in the "Key Words" table)
+
+If any of the below words are in a row of **data**, it will get replaced by a value, as shown below:
+
+Key Word | String Replacement | Format
+--- | --- | ---
+TIME | Computer time | hh:mm:ss.000
+TIMER | Number of seconds since the serial connection opened (or last timer reset) | 0.00
+DATE | Computer date | mm-dd-yyyy
+
 ### Tutorial
-If all of the libraries are installed, and the thermocouple code from E13.5 is on your Arduino (see [**Appendix B**](README.md#appendix-b-arduino-code)), you are ready for the tutorial.
+If all of the libraries are installed, and the thermocouple code from E13.5 is on your Arduino (see [**Appendix B**](#appendix-b-arduino-code)), you are ready for the tutorial.
 1. Before plugging in the Arduino to your computer, run BB-DAQ. **You can do this either from your IDE or a terminal window.** For this tutorial, I will use the terminal window (I used the `cd` command to get to the directory with the code).
 ```
 brad@Brads-MBP ~ % cd "/Users/brad/Desktop/Courses/AME 341b/HW/Assignment Submissions/E13p5/Mac Workaround"
@@ -88,10 +112,9 @@ There are three ways to stop the program:
   Press Ctrl+C (use as last resort).
 ```
 
-6. At this point, the live graph should appear, and the data will be displayed in the output as it is being read and processed into an Excel file or CSV file. When you are finished, press any key while the graph window is selected to stop the code. Your output file should be available once the code stops running.
- 
-## Appendix A: BB-BoardTester Tutorial
+6. At this point, the live graph should appear, and the data will be displayed in the output as it is being read and processed into an Excel file or CSV file. When you are finished, press any key while the graph window is selected to stop the code. Your output file should be available once the code stops running. (Note that if you use the Reset button on the Arduino to stop the program, you may get an error message besides the graceful exit depending on what line in the code is running.)
 
+## Appendix A: BB-BoardTester Tutorial
 If the pyserial library is installed, and the thermocouple code from E13.5 is on your Arduino (or any code with a value that increments with each loop), you are ready for the tutorial.
 1. Before plugging in the Arduino to your computer, run the script. **You can do this either from your IDE or a terminal window.** For this tutorial, I will use the terminal window (I used the `cd` command to get to the directory with the code).
 ```
@@ -155,7 +178,6 @@ Done.
 ```
 
 ## Appendix B: Arduino Code
-
 ```
 // Thermocouple Arduino Code (AME-341b, Sp2023)
 // Comments were modified to prevent spilling over to the next line

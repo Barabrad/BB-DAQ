@@ -107,17 +107,19 @@ def getHeaderAndDelay(ser, DATA_START_AFTER):
 
 # This function determines what a row is (i.e., LABEL or DATA)
 # None is returned if the row is blank
-# If the first value is a number, then the row is assumed to be DATA
-def getRowTypeAndNumCols(rowArr):
-    rowType = "DATA"; # Default
+# If the first value is not a row type or directive, then the row is assumed to be the given default
+def getRowTypeAndNumCols(rowArr, ROW_TYPES, DIRECTIVES, defaultRow):
     numCols = len(rowArr);
+    rowType = defaultRow; # Set default
+    missingLabel = False;
     if (numCols == 0):
         rowType == None;
     else:
-        col1 = rowArr[0].strip();
-        if (col1 == ""): rowType == None;
-        elif (not col1[0].isnumeric()): rowType = col1.upper();
-    return [rowType, numCols];
+        col1 = rowArr[0].strip().upper();
+        if (col1 == ""): rowType = None;
+        elif (col1 in ROW_TYPES) or (col1 in DIRECTIVES): rowType = col1;
+        else: missingLabel = True;
+    return [rowType, numCols, missingLabel];
 
 
 # This function writes text to a file
@@ -142,24 +144,147 @@ def addAndFormatSheet(workbook, sheetName):
     return sheet;
 
 
+# This function processes a data row, which entails checking for key words, writing to file, and graphing
+def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, bufXPlot, bufYPlot, bufInd, bufSize, ax, \
+                   graphPause, timerT0, fileName, sheet, format_time, format_timer, format_date):
+    # Key words
+    TIME_WORD = "TIME";
+    TIMER_WORD = "TIMER";
+    DATE_WORD = "DATE";
+    # Begin data processing
+    currTime = currData = None; # Reset the time and data values
+    for col in range(numCols):
+        cellData = row[col];
+        isTime = isTimer = isDate = False; # Used in later if-else statements since cellData will be overwritten
+        # Swap out key words with the values
+        cellDataUpper = cellData.upper();
+        if (cellDataUpper == TIME_WORD):
+            isTime = True;
+            cellData = datetime.now().time();
+            cellFormat = format_time;
+        elif (cellDataUpper == TIMER_WORD):
+            isTimer = True;
+            cellData = round(time.time() - timerT0, 3);
+            cellFormat = format_timer;
+        elif (cellDataUpper == DATE_WORD):
+            isDate = True;
+            cellData = datetime.now().date();
+            cellFormat = format_date;
+        else:
+            cellFormat = None;
+        if (isTimer) or (isDate):
+            strData = str(cellData); # Datetime objects can't be plotted
+            if (col == dataColInd): currData = strData;
+            if (col == timeColInd): currTime = strData;
+        # Write to file accordingly
+        if (saveAsXLSX):
+            try:
+                if (not isTime):
+                    cellData = float(cellData);
+                    if (col == dataColInd): currData = cellData;
+                    if (col == timeColInd): currTime = cellData;
+            except:
+                pass;
+            finally:
+                sheet.write(rowNum, col, cellData, cellFormat);
+        else:
+            try:
+                if (not isTime):
+                    # Don't make cellData a float since it will be converted back to string for CSV
+                    if (col == dataColInd): currData = float(cellData);
+                    if (col == timeColInd): currTime = float(cellData);
+            except:
+                pass;
+            finally:
+                # The row array is unused after the column iteration, so it can be reused for holding CSV values
+                if (isTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
+    # Add data from row to buffer and/or plot it
+    bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;
+    bufInd += 1;
+    if (bufInd == bufSize):
+        ax.plot(bufXPlot, bufYPlot, '-b'); # Plot values
+        bufXPlot[0] = currTime; bufYPlot[0] = currData; # Put the last plotted values in (for graph continuity)
+        bufInd = 1; # Reset the index
+        if (plt.waitforbuttonpress(graphPause)): raise KeyboardInterrupt; # This will wait for your keypress
+    # Increment row/line
+    if (saveAsXLSX): rowNum += 1;
+    else: writeToTextFile(fileName, f"{','.join(row)}\n");
+    return [sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax];
+
+
+# This function processes a label row
+def processLabelRow(saveAsXLSX, sheet, rowNum, row, fileName, dataIn):
+    if (saveAsXLSX): sheet.write_row(rowNum, 0, row); rowNum += 1;
+    else: writeToTextFile(fileName, f"{dataIn}\n");
+    return [sheet, rowNum];
+
+
+# This function processes a message row
+# (Nothing is to be done in this case)
+def processMsgRow():
+    pass;
+
+
+# This function processes the reset timer directive
+def processResetTimer():
+    timerT0 = time.time();
+    return timerT0;
+
+
+# This function processes the clear data directive
+def processClearData(saveAsXLSX, workbook, sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize):
+    if (saveAsXLSX):
+        # Overwrite all rows after header then reset rowNum
+        # The below is inspired by https://github.com/jmcnamara/XlsxWriter/pull/432/commits/613f2ca7a60018337222f6a07d602e3f28595a36
+        workbook.worksheets().remove(sheet);
+        sheet = addAndFormatSheet(workbook, sheetName);
+        sheet.write_row(0, 0, header); # Preserve the header to replicate PLX-DAQ's "CLEARDATA"
+        rowNum = 1; # Reset row counter to after header
+    else:
+        workbook = sheet = rowNum = None;
+        writeToTextFile(fileName, f"{headerTxt}\n", False);
+    # Reset graph
+    plt.cla(); ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
+    # Reset buffers and index
+    [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
+    bufInd = 0; # Restart the index count (afterwards, reserve 0 for the last plotted value)
+    return [workbook, sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax];
+
+
 # This function does the reading of serial data and writing of the output file
-def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, DATA_START_AFTER, TIMER_RESET, graphPause):
+def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, \
+                    DATA_START_AFTER, graphPause):
+    # Directives
+    RESET_TIMER = "RESETTIMER";
+    CLEAR_DATA = "CLEARDATA";
+    DIRECTIVES = (RESET_TIMER, CLEAR_DATA);
+    # Row types
+    DATA_ROW = "DATA";
+    LABEL_ROW = "LABEL";
+    MSG_ROW = "MSG";
+    ROW_TYPES = (DATA_ROW, LABEL_ROW, MSG_ROW);
+    
     # Find how many columns the header has
     header = headerTxt.split(DATA_DELIM);
     numHeaderCols = len(header);
 
     # Prepare the output files (and related variables)
-    if (saveChoice == 0):
+    if (saveAsXLSX):
         sheetName = "Data";
-        workbook = xlsxwriter.Workbook(fileName, {'default_date_format': 'hh:mm:ss.000', 'constant_memory': True});
+        workbook = xlsxwriter.Workbook(fileName, {'constant_memory': True});
+        format_time = workbook.add_format({'num_format': 'hh:mm:ss.000'});
+        format_timer = workbook.add_format({'num_format': '0.00'});
+        format_date = workbook.add_format({'num_format': 'mm-dd-yyyy'});
         sheet = addAndFormatSheet(workbook, sheetName);
         rowNum = 0;
     else:
+        workbook = sheet = sheetName = rowNum = None;
+        format_time = format_timer = format_date = None;
         writeToTextFile(fileName, "", False);
 
     # Prepare the list that will be filled with values before being plotted
     # Index 0 will be reserved for last value of the previous plot, so add 1 to the buffer size for that
-    bufSize = int(INTERVAL_PLOT/delayArd) + 1 + 1; # The other +1 is to make sure at least 1 new value is plotted
+    bufSize = int(INTERVAL_PLOT/delayArd) + 1 + 1; # The other +1 is to make sure at least 1 new value is plotted (if delayArd > INTERVAL_PLOT)
     [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
     bufInd = 0; # Start the index count (afterwards, reserve 0 for the last plotted value)
 
@@ -178,7 +303,6 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
         print("  Press Ctrl+C (use as last resort).\n");
         while True:
             # The rows are iterated by the while loop, but columns will be iterated by the for loop
-            currTime = currData = None; # Reset the time and data values
             # Read in a line of data and parse it
             dataIn = (ser.readline()).decode().strip();
             if (not dataStarted):
@@ -186,89 +310,33 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
             else:
                 print(dataIn);
                 row = dataIn.split(DATA_DELIM);
-                [rowType, numCols] = getRowTypeAndNumCols(row);
-                rowIsData = (rowType == "DATA");
-                if ((numCols < numHeaderCols) and (rowIsData)) or (rowType == None):
+                [rowType, numCols, missingLabel] = getRowTypeAndNumCols(row, ROW_TYPES, DIRECTIVES, DATA_ROW);
+                rowIsData = (rowType == DATA_ROW);
+                rowIsMsg = (rowType == MSG_ROW);
+                # Check if the data stopped coming in
+                if (rowType == None):
                     print("\nSerial timed out.");
                     raise KeyboardInterrupt;
-                bypassRow = False; # Used to avoid using "break;" in the for loop
-                for col in range(numCols):
-                    if (not bypassRow):
-                        cellData = row[col];
-                        isTime = isTimer = False; # Used in later if-else statements since cellData will be overwritten
-                        # Swap out key words with the values
-                        if (cellData.upper() == "TIMER"):
-                            isTimer = True;
-                            cellData = round(time.time() - timerT0, 3);
-                        elif (cellData.upper() == "TIME"):
-                            isTime = True;
-                            cellData = datetime.now().time();
-                            strData = str(cellData); # Datetime objects can't be plotted
-                            if (col == dataColInd): currData = strData;
-                            if (col == timeColInd): currTime = strData;
-                        # Write to file accordingly
-                        if (rowIsData):
-                            if (saveChoice == 0):
-                                try:
-                                    if (not isTime):
-                                        cellData = float(cellData);
-                                        if (col == dataColInd): currData = cellData;
-                                        if (col == timeColInd): currTime = cellData;
-                                except:
-                                    pass;
-                                finally:
-                                    if (isTime): sheet.write_datetime(rowNum, col, cellData);
-                                    else: sheet.write(rowNum, col, cellData);
-                            else:
-                                try:
-                                    if (not isTime):
-                                        # Don't make cellData a float since it will be converted back to string for CSV
-                                        if (col == dataColInd): currData = float(cellData);
-                                        if (col == timeColInd): currTime = float(cellData);
-                                except:
-                                    pass;
-                                finally:
-                                    # The row array is unused after the column iteration, so it can be reused for holding CSV values
-                                    if (isTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
-                        elif (rowType == TIMER_RESET):
-                            timerT0 = time.time();
-                            bypassRow = True; # Move on to the next row
-                        elif (rowType == DATA_START_AFTER):
-                            if (saveChoice == 0):
-                                # Overwrite all rows after header then reset rowNum
-                                #row = [None]*numHeaderCols; # It's okay to overwrite row since it won't be used until the next line of data
-                                #for row_i in range(1, rowNum-1): # Current row is empty, and ignore header row
-                                #    sheet.write_row(row_i, 0, row, workbook.add_format());
-                                # If the below stops working, uncomment the above and set constant_memory to False in the Workbook constructor
-                                # The below is inspired by https://github.com/jmcnamara/XlsxWriter/pull/432/commits/613f2ca7a60018337222f6a07d602e3f28595a36
-                                workbook.worksheets().remove(sheet);
-                                sheet = addAndFormatSheet(workbook, sheetName);
-                                rowNum = 0; # The row incrementer will be bypassed
-                            else:
-                                writeToTextFile(fileName, f"{headerTxt}\n", False);
-                            # Reset graph
-                            plt.cla(); ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
-                            # Reset buffers and index
-                            [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
-                            bufInd = 0; # Restart the index count (afterwards, reserve 0 for the last plotted value)
-                            bypassRow = True; # Move on to the next row
-                        else: # Some other row type, like "LABEL"
-                            if (saveChoice == 0): sheet.write(rowNum, col, cellData);
-                            # No need for an else; the row array already has the string value
-                # Check to see if the row has been bypassed before writing and plotting data
-                if (not bypassRow):
-                    # Increment row/line if the current row is not bypassed
-                    if (saveChoice == 0): rowNum += 1;
-                    else: writeToTextFile(fileName, f"{','.join(row)}\n");
-                    # Add data to buffer and/or plot it
-                    if (rowIsData):
-                        bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;
-                        bufInd += 1;
-                        if (bufInd == bufSize):
-                            ax.plot(bufXPlot, bufYPlot, '-b'); # Plot values
-                            bufXPlot[0] = currTime; bufYPlot[0] = currData; # Put the last plotted values in (for graph continuity)
-                            bufInd = 1; # Reset the index
-                            if (plt.waitforbuttonpress(graphPause)): raise KeyboardInterrupt; # This will wait for your keypress
+                # If the label is missing, add it
+                if (missingLabel) and (not rowIsMsg):
+                    if (saveAsXLSX): row = [rowType] + row; numCols += 1;
+                    else: writeToTextFile(fileName, f"{rowType},");
+                # Perform actions depending on the row type
+                if (rowIsData):
+                    [sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax] = processDataRow(rowNum, numCols, row, dataColInd, \
+                        timeColInd, saveAsXLSX, bufXPlot, bufYPlot, bufInd, bufSize, ax, graphPause, timerT0, fileName, \
+                        sheet, format_time, format_timer, format_date);
+                elif (rowType == RESET_TIMER):
+                    timerT0 = processResetTimer();
+                elif (rowType == CLEAR_DATA):
+                    [workbook, sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax] = processClearData(saveAsXLSX, workbook, \
+                        sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize);
+                elif (rowIsMsg):
+                    processMsgRow();
+                elif (rowType == LABEL_ROW):
+                    [sheet, rowNum] = processLabelRow(saveAsXLSX, sheet, rowNum, row, fileName, dataIn);
+                else:
+                    print(f"Unexpected row type: {rowType}"); # This line should not be reached, so it's good for troubleshooting
     except KeyboardInterrupt:
         print("\nExiting...");
     except:
@@ -276,7 +344,7 @@ def getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
     finally:
         ser.close(); plt.close(fig);
         
-    if (saveChoice == 0):
+    if (saveAsXLSX):
         # Create a new chart object before closing the workbook
         capitalA_Int = ord("A");
         timeCol = chr(capitalA_Int + timeColInd);
@@ -301,7 +369,6 @@ def main():
     # Constants
     INTERVAL_PLOT = 0.5; # Minimum number of seconds before plot is updated (semi-arbitrary)
     DATA_START_AFTER = "CLEARDATA";
-    TIMER_RESET = "RESETTIMER";
     DATA_DELIM = ",";
     
     # This first part will find the available serial ports. The Arduino should be a USB port.
@@ -342,17 +409,18 @@ def main():
         colHBnd = len(header) - 1;
         timeColInd = getValidIntInput(timePrompt, 0, colHBnd);
         dataColInd = getValidIntInput(dataPrompt, 0, colHBnd);
-        saveChoice = getValidIntInput(choicePrompt, 0, 1);
+        saveAsXLSX = (getValidIntInput(choicePrompt, 0, 1) == 0);
 
         fileName = os.path.normpath(input("Enter workbook/file name or path (without the file-specific extension): "));
-        ext = ".xlsx" if (saveChoice == 0) else ".csv";
+        ext = ".xlsx" if (saveAsXLSX) else ".csv";
         fileName += ext;
         fileName = resolveDupFile(fileName, ext);
         
         # Get and write data
         ser = serial.Serial(port, buad, timeout=TO_time);
         ser.close();
-        getAndWriteData(saveChoice, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, DATA_START_AFTER, TIMER_RESET, graphPause);
+        getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, \
+            DATA_START_AFTER, graphPause);
         # Print confirmation
         print("Done.");
 
