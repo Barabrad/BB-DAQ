@@ -20,11 +20,10 @@ def getValidIntInput(prompt, lBnd=None, hBnd=None):
         x = input(prompt).strip();
         try:
             x = int(x);
-            if (x == round(x, 0)):
-                if (lBnd == None): lBnd = x - 1;
-                if (hBnd == None): hBnd = x + 1;
-                valid = (lBnd <= x) and (x <= hBnd);
-                if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
+            if (lBnd == None): lBnd = x;
+            if (hBnd == None): hBnd = x;
+            valid = (lBnd <= x) and (x <= hBnd);
+            if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
         except:
             print("Error: Numeric input not an integer");
     return x;
@@ -52,7 +51,7 @@ def main():
     for p in portList:
         print(str(p_ind) + ": " + p.device);
         p_ind += 1;
-    portPrompt = "Enter the index of the port you want to use, or -1 to exit.\nChoice: ";
+    portPrompt = "Enter the index of the port you want to use, or -1 to exit: ";
     portChoice = getValidIntInput(portPrompt, -1, len(portList)-1);
 
     if (portChoice == -1):

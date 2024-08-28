@@ -20,6 +20,8 @@ from serial.tools import list_ports
 import xlsxwriter
 # If matplotlib is not installed, type "pip3 install matplotlib" into a Terminal window
 from matplotlib import pyplot as plt
+# Python has a built-in enum library
+from enum import Enum
 # Python has a built-in os library
 import os
 # Python has a built-in datetime library
@@ -30,6 +32,12 @@ import time
 import traceback
 
 
+class GraphChoice(Enum):
+    LIVE = 0;
+    EXCEL_ONLY = 1;
+    NONE = 2;
+
+
 # This function gets a valid integer input from the user
 def getValidIntInput(prompt, lBnd=None, hBnd=None):
     valid = False;
@@ -37,11 +45,10 @@ def getValidIntInput(prompt, lBnd=None, hBnd=None):
         x = input(prompt).strip();
         try:
             x = int(x);
-            if (x == round(x, 0)):
-                if (lBnd == None): lBnd = x - 1;
-                if (hBnd == None): hBnd = x + 1;
-                valid = (lBnd <= x) and (x <= hBnd);
-                if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
+            if (lBnd == None): lBnd = x;
+            if (hBnd == None): hBnd = x;
+            valid = (lBnd <= x) and (x <= hBnd);
+            if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
         except:
             print("Error: Numeric input not an integer");
     return x;
@@ -65,9 +72,18 @@ def resolveDupFile(filepath, ext):
     return filepath;
 
 
+# This function gets a valid file name from the user 
+def getValidFileName(saveAsXLSX):
+    fileName = os.path.normpath(input("Enter workbook/file name or path (without the file-specific extension): "));
+    ext = ".xlsx" if (saveAsXLSX) else ".csv";
+    fileName += ext;
+    fileName = resolveDupFile(fileName, ext);
+    return fileName;
+
+
 # This function finds the header of the data and the Arduino delay time between data lines
 # It also finds the time the program should pause for after updating the graph
-def getHeaderAndDelay(ser, DATA_START_AFTER):
+def getHeaderAndDelay(ser, DATA_START_AFTER, user_GC):
     dataStarted = readHeader = time0Found = False;
     runHeaderLoop = True;
     headerTxt = "";
@@ -91,12 +107,12 @@ def getHeaderAndDelay(ser, DATA_START_AFTER):
     delayArd = round(t1 - t0, 3);
     # Determine pause time for graph
     graphPause = 0.5*delayArd; # Account for data processing time (the 0.5 is arbitrary)
-    if (delayArd == 0):
+    if (delayArd == 0) and (user_GC == GraphChoice.LIVE):
         # This is unlikely to happen, but I must account for it
         print("No notable Arduino delay between messages. There should be some sort of delay on the order of at least milliseconds.");
         print("If you want to see the live graph, there must be some pause for it to update.");
         print("If a delay is introduced, the graph and data-writing will lag behind, but there will be no gaps in the data stream.");
-        addDelay = input("Add a 1 ms delay? ('y'/'n'): ").upper() == "Y";
+        addDelay = input("Add a delay of 1 ms? ('y'/'n'): ").upper() == "Y";
         if (addDelay):
             delayArd = 0.001;
             graphPause = 0.001;
@@ -136,17 +152,39 @@ def fillTwoBufsWithNone(bufSize):
     return [buf1, buf2];
 
 
+# This function will get a valid spreadsheet name from the user
+def getValidSheetName():
+    print("\nRefer to the following website for sheet-naming rules:");
+    print("https://support.microsoft.com/en-us/office/rename-a-worksheet-3f1f7148-ee83-404d-8ef0-9ff99fbad1f9\n");
+    sheetPrompt = "Enter valid sheet name: ";
+    isGoodName = False;
+    while (not isGoodName):
+        sheetName = input(sheetPrompt).strip();
+        lenName = len(sheetName);
+        if (lenName > 0) and (lenName < 32):
+            goodName = sheetName.strip("'").replace("/","").replace("\\","").replace("?","").replace("*","") \
+                .replace(":","").replace("[","").replace("]","");
+            isGoodName = (sheetName == goodName) and (sheetName.lower() != "history") and (sheetName != "");
+    return sheetName;
+
+
 # This function adds a sheet to the workbook and formats it
 def addAndFormatSheet(workbook, sheetName):
-    sheet = workbook.add_worksheet(sheetName);
+    sheet = None;
+    while (sheet == None):
+        try:
+            sheet = workbook.add_worksheet(sheetName);
+        except:
+            print(f"\nSomething went wrong:\n{traceback.format_exc()}\n");
+            sheetName = getValidSheetName();
     # Make columns 1 and 3 (0-indexed) wider; this formatting is for BB-DAQ's original purpose, so feel free to change it
     sheet.set_column(1, 1, 15); sheet.set_column(3, 3, 15);
-    return sheet;
+    return [sheet, sheetName];
 
 
 # This function processes a data row, which entails checking for key words, writing to file, and graphing
 def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, bufXPlot, bufYPlot, bufInd, bufSize, ax, \
-                   graphPause, timerT0, fileName, sheet, format_time, format_timer, format_date):
+                   graphPause, timerT0, fileName, sheet, format_time, format_timer, format_date, user_GC):
     # Key words
     TIME_WORD = "TIME";
     TIMER_WORD = "TIMER";
@@ -172,14 +210,16 @@ def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, buf
             cellFormat = format_date;
         else:
             cellFormat = None;
-        if (isTimer) or (isDate):
+        # Check if the time or date is a graphed value
+        isDateTime = (isTime) or (isDate);
+        if (isDateTime) and (user_GC != GraphChoice.NONE):
             strData = str(cellData); # Datetime objects can't be plotted
             if (col == dataColInd): currData = strData;
             if (col == timeColInd): currTime = strData;
         # Write to file accordingly
         if (saveAsXLSX):
             try:
-                if (not isTime):
+                if (not isDateTime) and (user_GC != GraphChoice.NONE):
                     cellData = float(cellData);
                     if (col == dataColInd): currData = cellData;
                     if (col == timeColInd): currTime = cellData;
@@ -189,7 +229,7 @@ def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, buf
                 sheet.write(rowNum, col, cellData, cellFormat);
         else:
             try:
-                if (not isTime):
+                if (not isDateTime) and (user_GC != GraphChoice.NONE):
                     # Don't make cellData a float since it will be converted back to string for CSV
                     if (col == dataColInd): currData = float(cellData);
                     if (col == timeColInd): currTime = float(cellData);
@@ -197,15 +237,16 @@ def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, buf
                 pass;
             finally:
                 # The row array is unused after the column iteration, so it can be reused for holding CSV values
-                if (isTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
-    # Add data from row to buffer and/or plot it
-    bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;
-    bufInd += 1;
-    if (bufInd == bufSize):
-        ax.plot(bufXPlot, bufYPlot, '-b'); # Plot values
-        bufXPlot[0] = currTime; bufYPlot[0] = currData; # Put the last plotted values in (for graph continuity)
-        bufInd = 1; # Reset the index
-        if (plt.waitforbuttonpress(graphPause)): raise KeyboardInterrupt; # This will wait for your keypress
+                if (isDateTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
+    if (user_GC == GraphChoice.LIVE):
+        # Add data from row to buffer and/or plot it
+        bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;
+        bufInd += 1;
+        if (bufInd == bufSize):
+            ax.plot(bufXPlot, bufYPlot, '-b'); # Plot values
+            bufXPlot[0] = currTime; bufYPlot[0] = currData; # Put the last plotted values in (for graph continuity)
+            bufInd = 1; # Reset the index
+            if (plt.waitforbuttonpress(graphPause)): raise KeyboardInterrupt; # This will wait for your keypress
     # Increment row/line
     if (saveAsXLSX): rowNum += 1;
     else: writeToTextFile(fileName, f"{','.join(row)}\n");
@@ -232,28 +273,31 @@ def processResetTimer():
 
 
 # This function processes the clear data directive
-def processClearData(saveAsXLSX, workbook, sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize):
+def processClearData(saveAsXLSX, workbook, sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize, user_GC):
     if (saveAsXLSX):
         # Overwrite all rows after header then reset rowNum
         # The below is inspired by https://github.com/jmcnamara/XlsxWriter/pull/432/commits/613f2ca7a60018337222f6a07d602e3f28595a36
         workbook.worksheets().remove(sheet);
-        sheet = addAndFormatSheet(workbook, sheetName);
+        [sheet, sheetName] = addAndFormatSheet(workbook, sheetName);
         sheet.write_row(0, 0, header); # Preserve the header to replicate PLX-DAQ's "CLEARDATA"
         rowNum = 1; # Reset row counter to after header
     else:
         workbook = sheet = rowNum = None;
         writeToTextFile(fileName, f"{headerTxt}\n", False);
-    # Reset graph
-    plt.cla(); ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
-    # Reset buffers and index
-    [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
-    bufInd = 0; # Restart the index count (afterwards, reserve 0 for the last plotted value)
+    if (user_GC == GraphChoice.LIVE):
+        # Reset graph
+        plt.cla(); ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
+        # Reset buffers and index
+        [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
+        bufInd = 0; # Restart the index count (afterwards, reserve 0 for the last plotted value)
+    else:
+        bufXPlot = bufYPlot = bufInd = None;
     return [workbook, sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax];
 
 
-# This function does the reading of serial data and writing of the output file
+# This function does the reading of serial data and writing of the output file (the optional parameters are populated internally)
 def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, \
-                    DATA_START_AFTER, graphPause):
+                    DATA_START_AFTER, graphPause, user_GC, workbook=None, formatList=None):
     # Directives
     RESET_TIMER = "RESETTIMER";
     CLEAR_DATA = "CLEARDATA";
@@ -270,28 +314,34 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
 
     # Prepare the output files (and related variables)
     if (saveAsXLSX):
-        sheetName = "Data";
-        workbook = xlsxwriter.Workbook(fileName, {'constant_memory': True});
-        format_time = workbook.add_format({'num_format': 'hh:mm:ss.000'});
-        format_timer = workbook.add_format({'num_format': '0.00'});
-        format_date = workbook.add_format({'num_format': 'mm-dd-yyyy'});
-        sheet = addAndFormatSheet(workbook, sheetName);
+        sheetName = getValidSheetName();
+        if (workbook == None):
+            workbook = xlsxwriter.Workbook(fileName, {'constant_memory': True});
+            format_time = workbook.add_format({'num_format': 'hh:mm:ss.000'});
+            format_timer = workbook.add_format({'num_format': '0.00'});
+            format_date = workbook.add_format({'num_format': 'mm-dd-yyyy'});
+        else:
+            format_time, format_timer, format_date = formatList;
+        [sheet, sheetName] = addAndFormatSheet(workbook, sheetName);
         rowNum = 0;
     else:
         workbook = sheet = sheetName = rowNum = None;
         format_time = format_timer = format_date = None;
         writeToTextFile(fileName, "", False);
 
-    # Prepare the list that will be filled with values before being plotted
-    # Index 0 will be reserved for last value of the previous plot, so add 1 to the buffer size for that
-    bufSize = int(INTERVAL_PLOT/delayArd) + 1 + 1; # The other +1 is to make sure at least 1 new value is plotted (if delayArd > INTERVAL_PLOT)
-    [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
-    bufInd = 0; # Start the index count (afterwards, reserve 0 for the last plotted value)
-
-    fig, ax = plt.subplots(1,1); plt.ion();
-    xLabel = header[timeColInd];
-    yLabel = header[dataColInd];
-    ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
+    if (user_GC == GraphChoice.LIVE):
+        # Prepare the list that will be filled with values before being plotted
+        # Index 0 will be reserved for last value of the previous plot, so add 1 to the buffer size for that
+        bufSize = int(INTERVAL_PLOT/delayArd) + 1 + 1; # The other +1 is to make sure at least 1 new value is plotted (if delayArd > INTERVAL_PLOT)
+        [bufXPlot, bufYPlot] = fillTwoBufsWithNone(bufSize);
+        bufInd = 0; # Start the index count (afterwards, reserve 0 for the last plotted value)
+        # Prepare the figure
+        fig, ax = plt.subplots(1,1); plt.ion();
+        xLabel = header[timeColInd];
+        yLabel = header[dataColInd];
+        ax.set_xlabel(xLabel); ax.set_ylabel(yLabel);
+    else:
+        bufSize = bufXPlot = bufYPlot = bufInd = fig = ax = xLabel = yLabel = None;
 
     dataStarted = False;
     timerT0 = time.time();
@@ -325,12 +375,12 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
                 if (rowIsData):
                     [sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax] = processDataRow(rowNum, numCols, row, dataColInd, \
                         timeColInd, saveAsXLSX, bufXPlot, bufYPlot, bufInd, bufSize, ax, graphPause, timerT0, fileName, \
-                        sheet, format_time, format_timer, format_date);
+                        sheet, format_time, format_timer, format_date, user_GC);
                 elif (rowType == RESET_TIMER):
                     timerT0 = processResetTimer();
                 elif (rowType == CLEAR_DATA):
                     [workbook, sheet, rowNum, bufXPlot, bufYPlot, bufInd, ax] = processClearData(saveAsXLSX, workbook, \
-                        sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize);
+                        sheet, sheetName, fileName, header, headerTxt, ax, xLabel, yLabel, bufSize, user_GC);
                 elif (rowIsMsg):
                     processMsgRow();
                 elif (rowType == LABEL_ROW):
@@ -342,26 +392,52 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
     except:
         print(f"\nSomething went wrong:\n{traceback.format_exc()}\n");
     finally:
-        ser.close(); plt.close(fig);
+        ser.close();
+        if (user_GC == GraphChoice.LIVE): plt.close(fig);
         
+    # Give the user the option to run BB-DAQ again with the same settings (but in a new file/worksheet)
+    print("\nWould you like to run BB-DAQ again with the same settings, but with the output in a new file/worksheet?");
+    rerunPrompt = "Enter 0 to exit, or enter 1 to run again: ";
+    runAgain = (getValidIntInput(rerunPrompt, 0, 1) == 1);
+
     if (saveAsXLSX):
-        # Create a new chart object before closing the workbook
-        capitalA_Int = ord("A");
-        timeCol = chr(capitalA_Int + timeColInd);
-        dataCol = chr(capitalA_Int + dataColInd);
-        chartCol = chr(capitalA_Int + numHeaderCols + 1);
-        chart = workbook.add_chart({'type': 'line'});
-        finalRowStr = str(rowNum);
-        chart.add_series({
-            'categories': f'={sheetName}!${timeCol}$2:${timeCol}${finalRowStr}',
-            'values':     f'={sheetName}!${dataCol}$2:${dataCol}${finalRowStr}',
-        });
-        chart.set_x_axis({'name': f'={sheetName}!${timeCol}$1'});
-        chart.set_y_axis({'name': f'={sheetName}!${dataCol}$1'});
-        chart.set_legend({'none': True});
-        # Insert the chart into the worksheet
-        sheet.insert_chart(chartCol + '2', chart);
-        workbook.close();
+        if (user_GC != GraphChoice.NONE):
+            # Create a new chart object before closing the workbook
+            capitalA_Int = ord("A");
+            timeCol = chr(capitalA_Int + timeColInd);
+            dataCol = chr(capitalA_Int + dataColInd);
+            chartCol = chr(capitalA_Int + numHeaderCols + 1);
+            chart = workbook.add_chart({'type': 'line'});
+            finalRowStr = str(rowNum);
+            chart.add_series({
+                'categories': f'={sheetName}!${timeCol}$2:${timeCol}${finalRowStr}',
+                'values':     f'={sheetName}!${dataCol}$2:${dataCol}${finalRowStr}',
+            });
+            chart.set_x_axis({'name': f'={sheetName}!${timeCol}$1'});
+            chart.set_y_axis({'name': f'={sheetName}!${dataCol}$1'});
+            chart.set_legend({'none': True});
+            # Insert the chart into the worksheet
+            sheet.insert_chart(chartCol + '2', chart);
+        if (runAgain):
+            rerunPromptXlsx = "Enter 0 to make a new worksheet in the same workbook, or enter 1 to make a new workbook: ";
+            newWkbk = (getValidIntInput(rerunPromptXlsx, 0, 1) == 1);
+            if (newWkbk):
+                workbook.close();
+                fileName = getValidFileName(saveAsXLSX);
+                workbook = None;
+            formatList = [format_time, format_timer, format_date];
+        else:
+            workbook.close();
+    else:
+        if (runAgain):
+            fileName = getValidFileName(saveAsXLSX);
+            formatList = None; # Prepare for function call (workbook is already None from beginning for CSV)
+    
+    # Run again (generalized for both cases)
+    if (runAgain):
+        # Now we can use the optional parameters in the function call
+        getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, \
+            ser, DATA_START_AFTER, graphPause, user_GC, workbook, formatList);
 
 
 # main()
@@ -380,8 +456,8 @@ def main():
     for p in portList:
         print(f"{p_ind}: {p.device}");
         p_ind += 1;
-    portPrompt = "Enter the index of the port you want to use, or -1 to exit.\nChoice: ";
-    portChoice = getValidIntInput(portPrompt, -1, len(portList)-1);
+    portPrompt = "Enter the index of the port you want to use, or -1 to exit: ";
+    portChoice = getValidIntInput(portPrompt, -1, p_ind-1); # At this point, p_ind = len(portList)
 
     if (portChoice == -1):
         print("Exiting...");
@@ -389,7 +465,13 @@ def main():
         # This second part will actually read the serial data from the Arduino and write it to a file.
         # A live graph of the numerical data will also be generated.
 
+        # Check to see if the user wants the live graph
+        print("");
+        graphPrompt = "Enter 0 to see the live graph, 1 to see the graph only in the Excel output, or 2 to not see the graph at all: ";
+        user_GC = GraphChoice(getValidIntInput(graphPrompt, 0, 2));
+
         # Get port info from user
+        print("");
         port = portList[portChoice].device;
         buad = getValidIntInput("Enter the buad rate: ", 1);
         # See the rest of serial.Serial()'s parameters here:
@@ -398,29 +480,30 @@ def main():
         ser.close();
 
         # Find the header and delay time between data (and for graph)
-        [headerTxt, delayArd, graphPause] = getHeaderAndDelay(ser, DATA_START_AFTER);
+        [headerTxt, delayArd, graphPause] = getHeaderAndDelay(ser, DATA_START_AFTER, user_GC);
         TO_time = 1.25*delayArd; # Amount of time before timeout on serial read
         header = headerTxt.split(DATA_DELIM);
 
         print("\nHeader:\n" + headerTxt + "\n");
-        timePrompt = "Enter the column index (start at 0) for the x-axis in the transmitted data: ";
-        dataPrompt = "Enter the column index (start at 0) for the y-axis in the transmitted data: ";
+        # Ask plot questions if the graph will appear at any point
+        if (user_GC == GraphChoice.LIVE) or ((user_GC == GraphChoice.EXCEL_ONLY) and (saveAsXLSX)):
+            timePrompt = "Enter the column index (start at 0) for the x-axis in the transmitted data: ";
+            dataPrompt = "Enter the column index (start at 0) for the y-axis in the transmitted data: ";
+            colHBnd = len(header) - 1;
+            timeColInd = getValidIntInput(timePrompt, 0, colHBnd);
+            dataColInd = getValidIntInput(dataPrompt, 0, colHBnd);
+        else:
+            timeColInd = dataColInd = None;
         choicePrompt = "Enter 0 to save as an Excel workbook, or enter 1 to save as a CSV file: ";
-        colHBnd = len(header) - 1;
-        timeColInd = getValidIntInput(timePrompt, 0, colHBnd);
-        dataColInd = getValidIntInput(dataPrompt, 0, colHBnd);
         saveAsXLSX = (getValidIntInput(choicePrompt, 0, 1) == 0);
 
-        fileName = os.path.normpath(input("Enter workbook/file name or path (without the file-specific extension): "));
-        ext = ".xlsx" if (saveAsXLSX) else ".csv";
-        fileName += ext;
-        fileName = resolveDupFile(fileName, ext);
+        fileName = getValidFileName(saveAsXLSX);
         
         # Get and write data
         ser = serial.Serial(port, buad, timeout=TO_time);
         ser.close();
         getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, delayArd, timeColInd, dataColInd, ser, \
-            DATA_START_AFTER, graphPause);
+            DATA_START_AFTER, graphPause, user_GC);
         # Print confirmation
         print("Done.");
 

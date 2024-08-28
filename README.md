@@ -11,26 +11,30 @@ I found out in Spring 2024 that different boards behave differently when the ser
 ### Libraries
 The libraries this script uses are listed below, as well as the download instructions. **My assumption is that you already have Python 3 installed on your computer.** To check, open a terminal window and type `python3 -V`. If the output does not display a version number, try `python -V`. If the latter command works, use `python` and `pip` instead of `python3` and `pip3`, respectively. If neither command shows a version number, install Python 3 first, and then return here. To see which non-built-in libraries are already installed, open a terminal window and type `pip3 list`.
 1. pyserial
-    * This library is imported in the code as "serial" instead of "pyserial," so make sure you do not have another library installed named "serial." If you do, open a terminal, uninstall it while using this code, and reinstall it afterwards.
+    * This library is imported in the code as "serial" instead of "pyserial," so make sure you do not have another library installed named "serial." If you do, open a terminal, uninstall it while running the files in this repository, and reinstall it afterwards (or if you're comfortable enough with Python, create a [virtual environment](https://docs.python.org/3/library/venv.html) for running the files in this repository).
     * This library is not built-in, so you need to open a terminal window and enter `python3 -m pip install pyserial` if you do not have the library.
 2. xlsxwriter
     * This library is not built-in, so you need to open a terminal window and enter `pip3 install xlsxwriter` if you do not have the library.
 3. matplotlib
     * This library is not built-in, so you need to open a terminal window and enter `pip3 install matplotlib` if you do not have the library.
-4. os
+4. enum
     * This library is built-in, so you should not need to install anything.
-5. datetime
+5. os
     * This library is built-in, so you should not need to install anything.
-6. time
+6. datetime
     * This library is built-in, so you should not need to install anything.
-7. traceback
+7. time
+    * This library is built-in, so you should not need to install anything.
+8. traceback
     * This library is built-in, so you should not need to install anything
 
 ### Warning
-This script does not replicate all of the features of PLX-DAQ! This script was originally made to read data serially from an Arduino (see [**Appendix B**](#appendix-b-arduino-code) for the specific Arduino file), plot the data, and write to Excel. Replications for commands like "RESETTIMER" and "CLEARDATA" were added over a year later as an afterthought. See [**Current Key Words**](#current-key-words) for the current list of PLX-DAQ directives and special data strings this code can replicate.
+**This script does not replicate all of the features of PLX-DAQ!** This script was originally made to read data serially from an Arduino (see [**Appendix B**](#appendix-b-arduino-code) for the specific Arduino file), plot the data, and write to Excel. Replications for commands like "RESETTIMER" and "CLEARDATA" were added over a year later as an afterthought. See [**Current Key Words**](#current-key-words) for the current list of PLX-DAQ directives and special data strings this code can replicate.
+
+**You cannot append to an existing Excel file with BB-DAQ!** Using an existing file will overwrite it (the code will warn you). However, you will be given the option at the end of a run to collect more data on a new sheet (also referred to as "worksheet") within the Excel file (also referred to as "workbook") that is being created.
 
 Also, I am using a Mac, so the path slashes in the tutorial are different from those for Windows: "/" versus "\\" (the script accounts for this difference, but the tutorial does not).
-    * Note that Python's `os.path.normpath()` will correct "/" to "\\" on Windows, but will not correct "\\" to "/" on Mac.
+* Note that Python's `os.path.normpath()` will correct "/" to "\\" on Windows, but will not correct "\\" to "/" on Mac.
 
 ### Current Key Words
 Each line of data received serially will be split at each comma to form a list (or a row), and the **first value** will determine the row type. **If no row type is provided, or the type is not supported, the DATA type will be assumed and added to the beginning of the row.** The table below shows the current row types and behaviors:
@@ -64,8 +68,7 @@ brad@Brads-MBP ~ % cd "/Users/brad/Desktop/Courses/AME 341b/HW/Assignment Submis
 brad@Brads-MBP Mac Workaround % python3 BB-DAQ.py
 Ports:
 0: /dev/cu.Bluetooth-Incoming-Port
-Enter the index of the port you want to use, or -1 to exit.
-Choice: 
+Enter the index of the port you want to use, or -1 to exit: 
 ```
 
 2. At this point, take note of the ports available before plugging the Arduino in. After doing so, enter `-1` to exit, and then plug your Arduino into your computer. [**If R4**, press the Reset button on the Arduino.] Run the script again, and choose the new port (assuming you did not add or remove any other serial ports). Beyond this step, the process is the same whether you use an IDE or terminal window.
@@ -76,11 +79,16 @@ brad@Brads-MBP Mac Workaround % python3 BB-DAQ.py
 Ports:
 0: /dev/cu.Bluetooth-Incoming-Port
 1: /dev/cu.usbmodem11401
-Enter the index of the port you want to use, or -1 to exit.
-Choice: 1
+Enter the index of the port you want to use, or -1 to exit: 1
 ```
 
-3. Afterwards, enter the buad rate (which should be 9600, but check the parameter in the `Serial.begin()` line in your Arduino code). The script will then measure the delay between consecutive packets of data, which should be close to the value in the Arduino code (the set delay should be 200 ms, but check the parameter in the `delay()` line in your Arduino code). The header for the data will also appear.
+3. You will have the option to choose when to see the graph of the data. For this tutorial, the live graph will be selected (`0`).
+    * Note that if no graph is selected (`2`), you will not see some of the lines in the next steps that are needed for the graph.
+```
+Enter 0 to see the live graph, 1 to see the graph only in the Excel output, or 2 to not see the graph at all: 0
+```
+
+4. Afterwards, enter the buad rate (which should be 9600, but check the parameter in the `Serial.begin()` line in your Arduino code). The script will then measure the delay between consecutive packets of data, which should be close to the value in the Arduino code (the set delay should be 200 ms, but check the parameter in the `delay()` line in your Arduino code). The header for the data will also appear.
     * Note that the delay should not be 0 ms. If it is, make sure there is a delay programmed in your Arduino code. If there must be no delay at all for your use, you can continue, but the graph will not appear (the only ways to stop the code will be to press the Reset button on the Arduino or use Ctrl+C, but the latter may not end well despite my try-except statement).
 ```
 Enter the buad rate: 9600
@@ -94,7 +102,7 @@ LABEL,Computer Time,SNo,Time (Milli Sec.),Temp C
 Enter the column index (start at 0) for the x-axis in the transmitted data: 
 ```
 
-4. [**If R4**, press the Reset button on the Arduino.] After entering `3` for the column index for the x-axis, you will be asked for the y-axis, for which you should enter `4`. Afterwards, you will be asked to save the data in an Excel file or a CSV file. (This assignment requires an Excel file.)
+5. [**If R4**, press the Reset button on the Arduino.] After entering `3` for the column index for the x-axis, you will be asked for the y-axis, for which you should enter `4`. Afterwards, you will be asked to save the data in an Excel file or a CSV file. (The assignment this tutorial was made for requires an Excel file, so `0` will be entered.)
 ```
 Enter the column index (start at 0) for the x-axis in the transmitted data: 3
 Enter the column index (start at 0) for the y-axis in the transmitted data: 4
@@ -102,9 +110,14 @@ Enter 0 to save as an Excel workbook, or enter 1 to save as a CSV file: 0
 Enter workbook/file name or path (without the file-specific extension): 
 ```
 
-5. Enter the file name, but note that you will be asked to confirm the choice if there is already another file with the same name. After either case, the following output will be displayed before the data from the Arduino is read and processed:
+6. Enter the file name, but note that you will be asked to confirm the choice if there is already another file with the same name. If you chose to save the data as an Excel file in the previous step, it will ask you to name the sheet. After either case, the following output will be displayed before the data from the Arduino is read and processed:
 ```
 Enter workbook/file name or path (without the file-specific extension): Tutorial
+
+Refer to the following website for sheet-naming rules:
+https://support.microsoft.com/en-us/office/rename-a-worksheet-3f1f7148-ee83-404d-8ef0-9ff99fbad1f9
+
+Enter valid sheet name: Sheet1
 
 There are three ways to stop the program:
   Press any key while the graph window is selected.
@@ -112,7 +125,19 @@ There are three ways to stop the program:
   Press Ctrl+C (use as last resort).
 ```
 
-6. At this point, the live graph should appear, and the data will be displayed in the output as it is being read and processed into an Excel file or CSV file. When you are finished, press any key while the graph window is selected to stop the code. Your output file should be available once the code stops running. (Note that if you use the Reset button on the Arduino to stop the program, you may get an error message besides the graceful exit depending on what line in the code is running.)
+7. At this point, the live graph should appear, and the data will be displayed in the output as it is being read and processed into an Excel file or CSV file. When you are finished, press any key while the graph window is selected to stop the code.
+    * Note that if you use the Reset button on the Arduino to stop the program, you may get an error message besides the graceful exit depending on what line in the code is running.
+
+8. After the serial stream stops, you will be asked if you want to run the program again with the same settings, but with the output in a new file or worksheet. This tutorial will exit here (`0`). There is no need to continue the tutorial down the branch where the program is run again since the questions are straightforward. [**If R4**, press the Reset button on the Arduino if you choose to run the program again (`1`).]
+```
+Exiting...
+
+Would you like to run BB-DAQ again with the same settings, but with the output in a new file/worksheet?
+Enter 0 to exit, or enter 1 to run again: 0
+Done.
+```
+
+9. After completely exiting BB-DAQ, the output files should be available.
 
 ## Appendix A: BB-BoardTester Tutorial
 If the pyserial library is installed, and the thermocouple code from E13.5 is on your Arduino (or any code with a value that increments with each loop), you are ready for the tutorial.
@@ -122,8 +147,7 @@ brad@Brads-MBP ~ % cd "/Users/brad/Desktop/Courses/AME 341b/HW/Assignment Submis
 brad@Brads-MBP Mac Workaround % python3 BB-BoardTester.py
 Ports:
 0: /dev/cu.Bluetooth-Incoming-Port
-Enter the index of the port you want to use, or -1 to exit.
-Choice: 
+Enter the index of the port you want to use, or -1 to exit: 
 ```
 
 2. At this point, take note of the ports available before plugging the Arduino in. After doing so, enter `-1` to exit, and then plug your Arduino into your computer. Run the script again, and choose the new port (assuming you did not add or remove any other serial ports). Beyond this step, the process is the same whether you use an IDE or terminal window.
@@ -134,8 +158,7 @@ brad@Brads-MBP Mac Workaround % python3 BB-BoardTester.py
 Ports:
 0: /dev/cu.Bluetooth-Incoming-Port
 1: /dev/cu.usbmodem11401
-Enter the index of the port you want to use, or -1 to exit.
-Choice: 1
+Enter the index of the port you want to use, or -1 to exit: 1
 ```
 
 3. Afterwards, enter the buad rate (which should be 9600, but check the parameter in the `Serial.begin()` line in your Arduino code). The script will then open the serial port, take in 10 lines (an arbitrary hard-coded number), close the serial port, and do those three steps a second time.
