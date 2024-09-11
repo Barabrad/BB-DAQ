@@ -45,8 +45,8 @@ def getValidIntInput(prompt, lBnd=None, hBnd=None):
         x = input(prompt).strip();
         try:
             x = int(x);
-            if (lBnd == None): lBnd = x;
-            if (hBnd == None): hBnd = x;
+            if (lBnd is None): lBnd = x;
+            if (hBnd is None): hBnd = x;
             valid = (lBnd <= x) and (x <= hBnd);
             if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
         except:
@@ -60,7 +60,7 @@ def resolveDupFile(filepath, ext):
     fileOverwrite = False;
     while (os.path.exists(filepath)) and (not fileOverwrite):
         print("This file already exists:", filepath);
-        fileOverwrite = input("Do you wish to overwrite it? ('y'/'n'): ").upper() == "Y";
+        fileOverwrite = (input("Do you wish to overwrite it? ('y'/'n'): ").upper() == "Y");
         if not fileOverwrite:
             filepath = os.path.normpath(input("Enter another workbook/file name or path (without the '" + ext + "' at the end): ") + ext);
     # Make sure the directory exists
@@ -112,7 +112,7 @@ def getHeaderAndDelay(ser, DATA_START_AFTER, user_GC):
         print("No notable Arduino delay between messages. There should be some sort of delay on the order of at least milliseconds.");
         print("If you want to see the live graph, there must be some pause for it to update.");
         print("If a delay is introduced, the graph and data-writing will lag behind, but there will be no gaps in the data stream.");
-        addDelay = input("Add a delay of 1 ms? ('y'/'n'): ").upper() == "Y";
+        addDelay = (input("Add a delay of 1 ms? ('y'/'n'): ").upper() == "Y");
         if (addDelay):
             delayArd = 0.001;
             graphPause = 0.001;
@@ -124,17 +124,16 @@ def getHeaderAndDelay(ser, DATA_START_AFTER, user_GC):
 # This function determines what a row is (i.e., LABEL or DATA)
 # None is returned if the row is blank
 # If the first value is not a row type or directive, then the row is assumed to be the given default
-def getRowTypeAndNumCols(rowArr, ROW_TYPES, DIRECTIVES, defaultRow):
+def getRowTypeAndNumCols(rowArr, KEY_WORDS, defaultRow):
     numCols = len(rowArr);
-    rowType = defaultRow; # Set default
     missingLabel = False;
     if (numCols == 0):
-        rowType == None;
+        rowType = None;
     else:
         col1 = rowArr[0].strip().upper();
         if (col1 == ""): rowType = None;
-        elif (col1 in ROW_TYPES) or (col1 in DIRECTIVES): rowType = col1;
-        else: missingLabel = True;
+        elif (col1 in KEY_WORDS): rowType = col1;
+        else: missingLabel = True; rowType = defaultRow; # Set to default
     return [rowType, numCols, missingLabel];
 
 
@@ -171,7 +170,7 @@ def getValidSheetName():
 # This function adds a sheet to the workbook and formats it
 def addAndFormatSheet(workbook, sheetName):
     sheet = None;
-    while (sheet == None):
+    while (sheet is None):
         try:
             sheet = workbook.add_worksheet(sheetName);
         except:
@@ -239,7 +238,7 @@ def processDataRow(rowNum, numCols, row, dataColInd, timeColInd, saveAsXLSX, buf
                 # The row array is unused after the column iteration, so it can be reused for holding CSV values
                 if (isDateTime) or (isTimer): row[col] = str(cellData); # All values in CSV are strings
     if (user_GC == GraphChoice.LIVE):
-        # Add data from row to buffer and/or plot it
+        # Add data from row to buffer and plot it if buffers are full
         bufXPlot[bufInd] = currTime; bufYPlot[bufInd] = currData;
         bufInd += 1;
         if (bufInd == bufSize):
@@ -301,12 +300,15 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
     # Directives
     RESET_TIMER = "RESETTIMER";
     CLEAR_DATA = "CLEARDATA";
-    DIRECTIVES = (RESET_TIMER, CLEAR_DATA);
+    #DIRECTIVES = {RESET_TIMER, CLEAR_DATA};
     # Row types
     DATA_ROW = "DATA";
     LABEL_ROW = "LABEL";
     MSG_ROW = "MSG";
-    ROW_TYPES = (DATA_ROW, LABEL_ROW, MSG_ROW);
+    #ROW_TYPES = {DATA_ROW, LABEL_ROW, MSG_ROW};
+    # All key words
+    #KEY_WORDS = DIRECTIVES.union(ROW_TYPES);
+    KEY_WORDS = {RESET_TIMER, CLEAR_DATA, DATA_ROW, LABEL_ROW, MSG_ROW};
     
     # Find how many columns the header has
     header = headerTxt.split(DATA_DELIM);
@@ -315,7 +317,7 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
     # Prepare the output files (and related variables)
     if (saveAsXLSX):
         sheetName = getValidSheetName();
-        if (workbook == None):
+        if (workbook is None):
             workbook = xlsxwriter.Workbook(fileName, {'constant_memory': True});
             format_time = workbook.add_format({'num_format': 'hh:mm:ss.000'});
             format_timer = workbook.add_format({'num_format': '0.00'});
@@ -360,11 +362,11 @@ def getAndWriteData(saveAsXLSX, fileName, headerTxt, DATA_DELIM, INTERVAL_PLOT, 
             else:
                 print(dataIn);
                 row = dataIn.split(DATA_DELIM);
-                [rowType, numCols, missingLabel] = getRowTypeAndNumCols(row, ROW_TYPES, DIRECTIVES, DATA_ROW);
+                [rowType, numCols, missingLabel] = getRowTypeAndNumCols(row, KEY_WORDS, DATA_ROW);
                 rowIsData = (rowType == DATA_ROW);
                 rowIsMsg = (rowType == MSG_ROW);
                 # Check if the data stopped coming in
-                if (rowType == None):
+                if (rowType is None):
                     print("\nSerial timed out.");
                     raise KeyboardInterrupt;
                 # If the label is missing, add it
