@@ -15,29 +15,29 @@ from serial.tools import list_ports
 
 # This function gets a valid integer input from the user
 def getValidIntInput(prompt, lBnd=None, hBnd=None):
-    valid = False;
+    valid = False
     while (not valid):
-        x = input(prompt).strip();
+        x = input(prompt).strip()
         try:
-            x = int(x);
-            if (lBnd == None): lBnd = x;
-            if (hBnd == None): hBnd = x;
-            valid = (lBnd <= x) and (x <= hBnd);
-            if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]");
+            x = int(x)
+            if (lBnd == None): lBnd = x
+            if (hBnd == None): hBnd = x
+            valid = (lBnd <= x) and (x <= hBnd)
+            if (not valid): print(f"Error: Integer out of range [{lBnd},{hBnd}]")
         except:
-            print("Error: Numeric input not an integer");
-    return x;
+            print("Error: Numeric input not an integer")
+    return x
 
 
 # This function opens the serial connection, gets a batch of data, then closes the connection
 def getSerialBatch(ser, numLines):
-    print("\nSerial Connection Opening...\n");
-    ser.open();
+    print("\nSerial Connection Opening...\n")
+    ser.open()
     for _ in range(numLines):
-        dataIn = (ser.readline()).decode().rstrip('\r\n');
-        print(dataIn);
-    ser.close();
-    print("\nSerial Connection Closed...\n");
+        dataIn = (ser.readline()).decode().rstrip('\r\n')
+        print(dataIn)
+    ser.close()
+    print("\nSerial Connection Closed...\n")
 
 
 # main()
@@ -45,34 +45,36 @@ def main():
     # This first part will find the available serial ports. The Arduino should be a USB port.
     # To be sure of the Arduino's port, run this part before and after plugging in the Arduino, and compare the
     # output. To minimize confusion, make sure no other devices are also being plugged in between the two runs.
-    portList = list(list_ports.comports());
-    p_ind = 0;
-    print("Ports:");
+    portList = list_ports.comports() # Outputs a list
+    p_ind = 0
+    print("Ports:")
     for p in portList:
-        print(str(p_ind) + ": " + p.device);
-        p_ind += 1;
-    portPrompt = "Enter the index of the port you want to use, or -1 to exit: ";
-    portChoice = getValidIntInput(portPrompt, -1, len(portList)-1);
+        print(f"{p_ind}: {p.device}")
+        p_ind += 1
+    portPrompt = "Enter the index of the port you want to use, or -1 to exit: "
+    portChoice = getValidIntInput(portPrompt, -1, p_ind-1) # At this point, p_ind = len(portList)
 
     if (portChoice == -1):
-        print("Exiting...");
-    else:
-        # This second part will show the user if the board resets upon closing the serial connection.
-        numLines = 10; # Arbitrary, but it must be enough to show whether or not the board reset
+        print("Exiting...")
+        return
 
-        # Get port info from user
-        port = portList[portChoice].device;
-        buad = getValidIntInput("Enter the buad rate: ", 1);
-        # See the rest of serial.Serial()'s parameters here:
-        # https://pyserial.readthedocs.io/en/latest/pyserial_api.html#serial.Serial.__init__
-        ser = serial.Serial(port, buad);
-        ser.close();
+    # This second part will show the user if the board resets upon closing the serial connection.
+    numLines = 10 # Arbitrary, but it must be enough to show whether the board reset
 
-        # Print two batches of serial data
-        for _ in range(2): getSerialBatch(ser, numLines);
+    # Get port info from user
+    port = portList[portChoice].device
+    buad = getValidIntInput("Enter the buad rate: ", 1)
+    # See the rest of serial.Serial()'s parameters here:
+    # https://pyserial.readthedocs.io/en/latest/pyserial_api.html#serial.Serial.__init__
+    ser = serial.Serial(port, buad)
+    # Close the port in case it is already open (this can happen when a serial connection isn't closed gracefully)
+    ser.close()
+    # Print two batches of serial data
+    for _ in range(2): getSerialBatch(ser, numLines)
 
-        print("Done.");
+    print("Done.")
 
 
 # Run main()
-main();
+if (__name__ == "__main__"):
+    main()
