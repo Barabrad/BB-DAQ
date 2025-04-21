@@ -1,0 +1,4 @@
+pyserial
+XlsxWriter
+matplotlib
+pytest
