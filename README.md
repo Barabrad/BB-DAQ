@@ -6,9 +6,8 @@ This repository contains `BB_DAQ.py`, a (limited) workaround for PLX-DAQ meant f
 This repository contains the following directories and files:
 - `src/`
 - `tests/`
+- `requirements.txt`
 - `.pylintrc`
-
-The former is a directory containing the files that one would use in a project, including `BB_DAQ.py`. The latter contains the tests run on `BB_DAQ.py` using [pytest](https://docs.pytest.org/en/stable/), as well as the test outputs for additional verification.
 
 ### src
 The `src` directory contains the following files:
@@ -28,11 +27,14 @@ The `tests` directory contains the following files:
 - `__init__.py`
   - This file is blank. It was added to make imports easier during testing.
 - `test_BB_DAQ.py`
-  - This file runs automated tests on `BB_DAQ.py`.
+  - This file runs automated tests on `BB_DAQ.py` using [pytest](https://docs.pytest.org/en/stable/).
 - `requirements.txt`
   - This file contains the Python libraries to import.
 - `README.md`
   - This file gives a thorough description of the other files in the directory (besides `__init__.py` and `requirements.txt`).
+
+### requirements
+The `requirements.txt` file lists all of the libraries needed to run any file in the repository.
 
 ### pylintrc
 The `.pylintrc` file is a configuration file for [pylint](https://www.pylint.org), which will be used by GitHub in the pipeline I am setting up. I had to alter a few settings to make sure that the current functional code gets a 10/10.
