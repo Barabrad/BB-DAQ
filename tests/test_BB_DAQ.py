@@ -7,8 +7,8 @@ A user would not need to see or even use this file.
 '''
 
 # Import standard libraries
-from os import listdir as os_ldir, remove as os_rmv
-from os.path import normpath, join as os_join, split as os_split
+from os import listdir, remove as os_rmv, makedirs
+from os.path import normpath, join as os_join, split as os_split, isdir
 from unittest.mock import patch
 from time import sleep
 # Import 3rd party libraries
@@ -86,11 +86,14 @@ class TestClass:
         Use this method to clear the output directory to prevent overwrites
         This method must be run first!
         """
-        file_list = os_ldir(TEST_OUT_DIR)
-        for filename in file_list:
-            # Make sure the file is an Excel or CSV file
-            if filename.endswith((".xlsx", ".csv")):
-                os_rmv(os_join(TEST_OUT_DIR,filename)) # Doesn't alter file_list
+        if not isdir(TEST_OUT_DIR):
+            makedirs(TEST_OUT_DIR)
+        else:
+            file_list = listdir(TEST_OUT_DIR)
+            for filename in file_list:
+                # Make sure the file is an Excel or CSV file
+                if filename.endswith((".xlsx", ".csv")):
+                    os_rmv(os_join(TEST_OUT_DIR,filename)) # Doesn't alter file_list
         assert True
 
     @pytest.mark.parametrize("test_row_type,expected_tuple", \
