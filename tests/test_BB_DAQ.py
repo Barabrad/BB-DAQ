@@ -10,7 +10,7 @@ A user would not need to see or even use this file.
 from os import listdir, remove as os_rmv, makedirs
 from os.path import normpath, join as os_join, split as os_split, isdir
 from unittest.mock import patch
-from time import sleep
+from time import time
 # Import 3rd party libraries
 import pytest
 # Import BB_DAQ from src directory
@@ -36,34 +36,25 @@ class SerialMock:
         self.line_stack = lines
         self.num_lines = len(lines)
         self.delay_s = delay_s
+        self.last_out_s = 0 # Tracks the number of seconds since last output
 
     def readline(self) -> bytes:
         """
         Returns an encoded string from the list of lines, and pops it from the list,
-        while using time.sleep() to mimic the Arduino delay time
+        while using a loop with time.time() to mimic the Arduino delay time
         (If the list is empty, "" will be returned)
         """
-        sleep(self.delay_s)
+        curr_s = time()
+        while (curr_s - self.last_out_s < self.delay_s):
+            curr_s = time()
+        self.last_out_s = curr_s # Update time
+        # Now the Arduino delay time is over
         if self.num_lines == 0:
             raise StopIteration()
         line_i = self.line_stack[-1]
         self.line_stack.pop()
         self.num_lines -= 1
         return line_i.encode()
-
-    def add_to_buffer(self, new_lines:list[str]) -> None:
-        """
-        A method that allows me to refresh the buffer without making another object
-        """
-        # Remember that the buffer is reversed to make pop easier
-        self.line_stack.reverse()
-        if self.num_lines > 0:
-            self.line_stack.pop() # Get rid of ""
-        for nl in new_lines:
-            self.line_stack.append(nl)
-        self.line_stack.append("") # Put "" back
-        self.line_stack.reverse()
-        self.num_lines += len(new_lines)
 
     def open(self) -> None:
         """
@@ -147,7 +138,8 @@ class TestClass:
         (header_txt, delay_ard, _) = BB_DAQ.get_header_and_delay(ser)
         assert header_txt == DATA_HEADER
         # We won't get delay_ard == sleep_time exactly, so we need a tolerance
-        tol = 0.025*sleep_time
+        # With my Arduino, I'd get something like 0.213 s when using a delay of 0.2 s
+        tol = 0.075*sleep_time
         assert -tol <= delay_ard - sleep_time <= tol
 
     @patch("builtins.input", side_effect=['Timer_Reset', '1', '0', 'history', 'Clear_Data', '1', \
